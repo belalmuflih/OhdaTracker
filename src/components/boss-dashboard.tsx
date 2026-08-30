@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase/client';
-import { Expense, ExportRequest, FundReceipt } from '@/lib/types';
+import { Expense, ExportRequest, FundReceipt, Account } from '@/lib/types';
 import { useAuth } from '@/components/auth-provider';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,6 +12,7 @@ import { ExpenseList } from '@/components/expense-list';
 import { FundReceiptForm } from '@/components/fund-receipt-form';
 import { ReceiptList } from '@/components/receipt-list';
 import { toast } from 'sonner';
+import { fmtNum } from '@/lib/currency';
 import {
   TrendingUp,
   ReceiptText,
@@ -23,6 +24,8 @@ import {
   ArrowUpCircle,
   Wallet,
   Pencil,
+  Filter,
+  X,
 } from 'lucide-react';
 
 export function BossDashboard() {
@@ -36,13 +39,66 @@ export function BossDashboard() {
   const [topupOpen, setTopupOpen] = useState(false);
   const [editingReceipt, setEditingReceipt] = useState<FundReceipt | null>(null);
 
+  // Accounts list for filtering
+  const [accounts, setAccounts] = useState<Account[]>([]);
+
+  // Expenses Filter States
+  const [expSearch, setExpSearch] = useState('');
+  const [debouncedExpSearch, setDebouncedExpSearch] = useState('');
+  const [expAccount, setExpAccount] = useState('all');
+  const [expInvoiceType, setExpInvoiceType] = useState('all');
+  const [expStatus, setExpStatus] = useState('all');
+  const [expStartDate, setExpStartDate] = useState('');
+  const [expEndDate, setExpEndDate] = useState('');
+  const [showExpFilters, setShowExpFilters] = useState(false);
+
+  // Top-Up Filter States
+  const [recSearch, setRecSearch] = useState('');
+  const [debouncedRecSearch, setDebouncedRecSearch] = useState('');
+  const [recAccount, setRecAccount] = useState('all');
+  const [recStartDate, setRecStartDate] = useState('');
+  const [recEndDate, setRecEndDate] = useState('');
+  const [showRecFilters, setShowRecFilters] = useState(false);
+
+  // Debounce search inputs
+  useEffect(() => {
+    const handler = setTimeout(() => setDebouncedExpSearch(expSearch), 300);
+    return () => clearTimeout(handler);
+  }, [expSearch]);
+
+  useEffect(() => {
+    const handler = setTimeout(() => setDebouncedRecSearch(recSearch), 300);
+    return () => clearTimeout(handler);
+  }, [recSearch]);
+
+  // Fetch accounts
+  useEffect(() => {
+    const fetchAccounts = async () => {
+      const { data } = await supabase.from('accounts').select('*').order('name');
+      if (data) setAccounts(data);
+    };
+    fetchAccounts();
+  }, []);
+
   const fetchData = useCallback(async () => {
     setLoading(true);
+    
+    let expQuery = supabase.from('expenses').select('*, accounts(name)');
+    if (debouncedExpSearch) expQuery = expQuery.ilike('description', `%${debouncedExpSearch}%`);
+    if (expAccount !== 'all') expQuery = expQuery.eq('account_id', expAccount);
+    if (expInvoiceType !== 'all') expQuery = expQuery.eq('invoice_type', expInvoiceType);
+    if (expStatus !== 'all') expQuery = expQuery.eq('status', expStatus);
+    if (expStartDate) expQuery = expQuery.gte('date', expStartDate);
+    if (expEndDate) expQuery = expQuery.lte('date', expEndDate);
+
+    let recQuery = supabase.from('fund_receipts').select('*, accounts(name)');
+    if (debouncedRecSearch) recQuery = recQuery.ilike('note', `%${debouncedRecSearch}%`);
+    if (recAccount !== 'all') recQuery = recQuery.eq('account_id', recAccount);
+    if (recStartDate) recQuery = recQuery.gte('date', recStartDate);
+    if (recEndDate) recQuery = recQuery.lte('date', recEndDate);
+
     const [expRes, reqRes, recRes] = await Promise.all([
-      supabase
-        .from('expenses')
-        .select('*, accounts(name)')
-        .order('date', { ascending: false }),
+      expQuery.order('date', { ascending: false }),
       supabase
         .from('export_requests')
         .select('*')
@@ -50,17 +106,15 @@ export function BossDashboard() {
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle(),
-      supabase
-        .from('fund_receipts')
-        .select('*')
-        .order('date', { ascending: false }),
+      recQuery.order('date', { ascending: false }),
     ]);
+
     if (expRes.data) setExpenses(expRes.data);
     if (recRes.data) setReceipts(recRes.data);
     setPendingRequest(reqRes.data);
     setExportReady(false);
     setLoading(false);
-  }, []);
+  }, [debouncedExpSearch, expAccount, expInvoiceType, expStatus, expStartDate, expEndDate, debouncedRecSearch, recAccount, recStartDate, recEndDate]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -110,21 +164,21 @@ export function BossDashboard() {
         {[
           {
             label: 'Balance',
-            value: `SAR ${balance.toFixed(2)}`,
+            value: `SAR ${fmtNum(balance)}`,
             icon: Wallet,
             sub: 'Funded − Spent',
             color: balance >= 0 ? 'text-emerald-500' : 'text-destructive',
           },
           {
             label: 'Total Funded',
-            value: `SAR ${totalFunded.toFixed(2)}`,
+            value: `SAR ${fmtNum(totalFunded)}`,
             icon: ArrowUpCircle,
             sub: 'All top-ups',
             color: 'text-primary',
           },
           {
             label: 'This Month',
-            value: `SAR ${thisMonth.reduce((s, e) => s + Number(e.amount), 0).toFixed(2)}`,
+            value: `SAR ${fmtNum(thisMonth.reduce((s, e) => s + Number(e.amount), 0))}`,
             icon: Clock,
             sub: `${thisMonth.length} items`,
             color: 'text-primary',
@@ -219,13 +273,115 @@ export function BossDashboard() {
 
           {/* Expense list (read-only) */}
           <Card className="rounded-2xl border-border/60">
-            <CardHeader className="pb-3">
+            <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
               <CardTitle className="text-base flex items-center gap-2">
                 <TrendingUp className="w-4 h-4 text-primary" />
                 All Expenses
               </CardTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 px-2.5 text-xs text-muted-foreground hover:text-foreground flex items-center gap-1.5 cursor-pointer"
+                onClick={() => setShowExpFilters(!showExpFilters)}
+              >
+                <Filter className="w-3.5 h-3.5" />
+                Filters
+                {(expSearch || expAccount !== 'all' || expInvoiceType !== 'all' || expStatus !== 'all' || expStartDate || expEndDate) && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                )}
+              </Button>
             </CardHeader>
             <CardContent>
+              {showExpFilters && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mb-4 p-4 rounded-xl bg-muted/30 border border-border/40 fade-in">
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Search</label>
+                    <input
+                      type="text"
+                      placeholder="Search description..."
+                      value={expSearch}
+                      onChange={(e) => setExpSearch(e.target.value)}
+                      className="w-full rounded border border-border/30 bg-background px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-primary/50"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Account</label>
+                    <select
+                      value={expAccount}
+                      onChange={(e) => setExpAccount(e.target.value)}
+                      className="w-full rounded border border-border/30 bg-background px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-primary/50 text-ellipsis overflow-hidden"
+                    >
+                      <option value="all">All Accounts</option>
+                      {accounts.map((acc) => (
+                        <option key={acc.id} value={acc.id}>{acc.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Invoice Type</label>
+                    <select
+                      value={expInvoiceType}
+                      onChange={(e) => setExpInvoiceType(e.target.value)}
+                      className="w-full rounded border border-border/30 bg-background px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-primary/50"
+                    >
+                      <option value="all">All Types</option>
+                      <option value="tax_invoice">Tax Invoice</option>
+                      <option value="simplified_tax">Simplified Tax</option>
+                      <option value="none">No Invoice</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Status</label>
+                    <select
+                      value={expStatus}
+                      onChange={(e) => setExpStatus(e.target.value)}
+                      className="w-full rounded border border-border/30 bg-background px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-primary/50"
+                    >
+                      <option value="all">All Statuses</option>
+                      <option value="draft">Draft</option>
+                      <option value="pending_export_approval">Pending</option>
+                      <option value="locked_exported">Exported</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">From Date</label>
+                    <input
+                      type="date"
+                      value={expStartDate}
+                      onChange={(e) => setExpStartDate(e.target.value)}
+                      className="w-full rounded border border-border/30 bg-background px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-primary/50"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">To Date</label>
+                    <input
+                      type="date"
+                      value={expEndDate}
+                      onChange={(e) => setExpEndDate(e.target.value)}
+                      className="w-full rounded border border-border/30 bg-background px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-primary/50"
+                    />
+                  </div>
+                  {(expSearch || expAccount !== 'all' || expInvoiceType !== 'all' || expStatus !== 'all' || expStartDate || expEndDate) && (
+                    <div className="md:col-span-3 flex justify-end">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setExpSearch('');
+                          setExpAccount('all');
+                          setExpInvoiceType('all');
+                          setExpStatus('all');
+                          setExpStartDate('');
+                          setExpEndDate('');
+                        }}
+                        className="h-8 px-2.5 text-xs text-destructive hover:text-destructive flex items-center gap-1 cursor-pointer"
+                      >
+                        <X className="w-3.5 h-3.5" /> Clear Filters
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
               <ExpenseList
                 expenses={expenses}
                 loading={loading}
@@ -276,10 +432,84 @@ export function BossDashboard() {
 
           {/* Receipt history */}
           <Card className="rounded-2xl border-border/60">
-            <CardHeader className="pb-3">
+            <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
               <CardTitle className="text-base">Funding History</CardTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 cursor-pointer"
+                onClick={() => setShowRecFilters(!showRecFilters)}
+              >
+                <Filter className="w-3 h-3" />
+                Filters
+                {(recSearch || recAccount !== 'all' || recStartDate || recEndDate) && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                )}
+              </Button>
             </CardHeader>
             <CardContent>
+              {showRecFilters && (
+                <div className="grid grid-cols-1 gap-2.5 mb-3 p-3 rounded-xl bg-muted/30 border border-border/40 fade-in">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Search</label>
+                    <input
+                      type="text"
+                      placeholder="Search notes..."
+                      value={recSearch}
+                      onChange={(e) => setRecSearch(e.target.value)}
+                      className="w-full rounded border border-border/30 bg-background px-2 py-1 text-xs text-foreground focus:outline-none focus:border-primary/50"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Account</label>
+                    <select
+                      value={recAccount}
+                      onChange={(e) => setRecAccount(e.target.value)}
+                      className="w-full rounded border border-border/30 bg-background px-2 py-1 text-xs text-foreground focus:outline-none focus:border-primary/50 text-ellipsis overflow-hidden"
+                    >
+                      <option value="all">All Accounts</option>
+                      {accounts.map((acc) => (
+                        <option key={acc.id} value={acc.id}>{acc.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">From Date</label>
+                    <input
+                      type="date"
+                      value={recStartDate}
+                      onChange={(e) => setRecStartDate(e.target.value)}
+                      className="w-full rounded border border-border/30 bg-background px-2 py-1 text-xs text-foreground focus:outline-none focus:border-primary/50"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">To Date</label>
+                    <input
+                      type="date"
+                      value={recEndDate}
+                      onChange={(e) => setRecEndDate(e.target.value)}
+                      className="w-full rounded border border-border/30 bg-background px-2 py-1 text-xs text-foreground focus:outline-none focus:border-primary/50"
+                    />
+                  </div>
+                  {(recSearch || recAccount !== 'all' || recStartDate || recEndDate) && (
+                    <div className="flex justify-end">
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        onClick={() => {
+                          setRecSearch('');
+                          setRecAccount('all');
+                          setRecStartDate('');
+                          setRecEndDate('');
+                        }}
+                        className="h-7 px-2 text-xs text-destructive hover:text-destructive flex items-center gap-1 cursor-pointer"
+                      >
+                        <X className="w-3 h-3" /> Clear
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
               <ReceiptList
                 receipts={receipts}
                 loading={loading}

@@ -12,6 +12,7 @@ import {
 import { supabase } from '@/lib/supabase/client';
 import { Expense, FundReceipt } from '@/lib/types';
 import { toast } from 'sonner';
+import { fmtNum } from '@/lib/currency';
 import {
   Download,
   Share2,
@@ -250,7 +251,7 @@ export function ExportHub({ expenses: initialExpenses = [], receipts: initialRec
   };
 
   const handleShare = async () => {
-    const text = `PerDiem Pro — ${exportType === 'combined' ? 'Account Statement' : exportType === 'income' ? 'Income Report' : 'Expense Report'}\n${new Date().toLocaleDateString()}\nBalance: SAR ${totalBalance.toFixed(2)}\nTotal Expenses: SAR ${totalExpenses.toFixed(2)}`;
+    const text = `PerDiem Pro — ${exportType === 'combined' ? 'Account Statement' : exportType === 'income' ? 'Income Report' : 'Expense Report'}\n${formatDate(new Date().toISOString())}\nBalance: SAR ${fmtNum(totalBalance)}\nTotal Expenses: SAR ${fmtNum(totalExpenses)}`;
     const shareData = { title: 'PerDiem Financial Report', text };
 
     if (navigator.share) {
@@ -303,7 +304,7 @@ export function ExportHub({ expenses: initialExpenses = [], receipts: initialRec
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium text-foreground">{expenses.length + receipts.length} transactions</span>
                 <span className={`text-lg font-bold font-mono ${totalBalance >= 0 ? 'text-emerald-500' : 'text-destructive'}`}>
-                  SAR {totalBalance.toFixed(2)}
+                  SAR {fmtNum(totalBalance)}
                 </span>
               </div>
             </div>

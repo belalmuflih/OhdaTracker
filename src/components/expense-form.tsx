@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { formatCurrency } from '@/lib/currency';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -190,6 +191,7 @@ export function ExpenseForm({ onSuccess, expense }: ExpenseFormProps) {
               className="pl-12 h-11 font-mono text-base"
               required
             />
+            <p className="text-sm text-muted-foreground mt-1">{formatCurrency(form.amount)}</p>
           </div>
         </div>
 
@@ -266,17 +268,17 @@ export function ExpenseForm({ onSuccess, expense }: ExpenseFormProps) {
             </Label>
             
             <label className="flex items-center gap-2 text-sm cursor-pointer hover:opacity-80 transition-opacity">
-              <input 
-                type="checkbox" 
-                checked={form.is_vat_inclusive}
-                onChange={(e) => {
-                  setManualVat(false); // Reset manual VAT when toggle changes
-                  set('is_vat_inclusive', e.target.checked);
-                }}
-                className="w-4 h-4 rounded border-primary text-primary focus:ring-primary cursor-pointer accent-primary"
-              />
-              <span className="font-medium">Amount is VAT Inclusive</span>
-            </label>
+  <input
+    type="checkbox"
+    checked={form.is_vat_inclusive}
+    onChange={(e) => {
+      setManualVat(false); // Reset manual VAT when toggle changes
+      set('is_vat_inclusive', e.target.checked);
+    }}
+    className="w-4 h-4 rounded border-primary text-primary focus:ring-primary cursor-pointer accent-primary"
+  />
+  <span className="font-medium">Amount is VAT Inclusive</span>
+</label>
           </div>
           
           <div className="space-y-2">

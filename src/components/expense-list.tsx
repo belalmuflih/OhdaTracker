@@ -21,6 +21,8 @@ import {
   Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { fmtNum } from '@/lib/currency';
+import { format } from 'date-fns';
 
 interface ExpenseListProps {
   expenses: Expense[];
@@ -75,6 +77,7 @@ export function ExpenseList({
 }: ExpenseListProps) {
   const [editExpense, setEditExpense] = useState<Expense | null>(null);
   const [editOpen, setEditOpen] = useState(false);
+  const [viewTarget, setViewTarget] = useState<Expense | null>(null);
 
   const [deleteTarget, setDeleteTarget] = useState<Expense | null>(null);
 
@@ -146,7 +149,7 @@ export function ExpenseList({
           {totalCount !== undefined ? `${expenses.length} of ${totalCount}` : expenses.length} expenses
         </span>
         <span className="text-sm font-bold text-foreground font-mono">
-          Total: <span className="text-primary">SAR {computedTotalAmount.toFixed(2)}</span>
+          Total: <span className="text-primary">SAR {fmtNum(computedTotalAmount)}</span>
         </span>
       </div>
 
@@ -173,7 +176,8 @@ export function ExpenseList({
           return (
             <div
               key={expense.id}
-              className="group p-4 rounded-2xl border border-border/60 bg-card hover:border-primary/30 hover:shadow-sm transition-all"
+              className="group p-4 rounded-2xl border border-border/60 bg-card hover:border-primary/30 hover:shadow-sm transition-all cursor-pointer"
+              onClick={() => setViewTarget(expense)}
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
@@ -188,9 +192,7 @@ export function ExpenseList({
                       <div className="flex items-center gap-3 mt-1.5 flex-wrap">
                         <span className="flex items-center gap-1 text-xs text-muted-foreground">
                           <Calendar className="w-3 h-3" />
-                          {new Date(expense.date).toLocaleDateString('en-GB', {
-                            day: '2-digit', month: 'short', year: 'numeric',
-                          })}
+                          {format(new Date(expense.date), 'dd/MM/yyyy')}
                         </span>
                         {expense.accounts?.name && (
                           <span className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -217,7 +219,7 @@ export function ExpenseList({
 
                 <div className="flex flex-col items-end gap-2 flex-shrink-0">
                   <span className="font-bold text-foreground font-mono text-sm">
-                    SAR {Number(expense.amount).toFixed(2)}
+                    SAR {fmtNum(expense.amount)}
                   </span>
                   {isLogger && (
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -225,7 +227,7 @@ export function ExpenseList({
                         variant="ghost"
                         size="sm"
                         className="h-7 w-7 p-0"
-                        onClick={() => { setEditExpense(expense); setEditOpen(true); }}
+                        onClick={(e) => { e.stopPropagation(); setEditExpense(expense); setEditOpen(true); }}
                       >
                         <Pencil className="w-3.5 h-3.5" />
                       </Button>
@@ -233,7 +235,7 @@ export function ExpenseList({
                         variant="ghost"
                         size="sm"
                         className="h-7 w-7 p-0 text-destructive hover:text-destructive cursor-pointer"
-                        onClick={() => setDeleteTarget(expense)}
+                        onClick={(e) => { e.stopPropagation(); setDeleteTarget(expense); }}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </Button>
@@ -264,6 +266,66 @@ export function ExpenseList({
         </div>
       )}
 
+      {/* View Expense Dialog */}
+      <Dialog open={!!viewTarget} onOpenChange={() => setViewTarget(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Expense Details</DialogTitle>
+          </DialogHeader>
+          {viewTarget && (
+            <div className="space-y-3 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Description</span>
+                <span className="font-medium text-foreground">{viewTarget.description}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Amount</span>
+                <span className="font-bold font-mono text-foreground">SAR {fmtNum(viewTarget.amount)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Date</span>
+                <span className="text-foreground">{format(new Date(viewTarget.date), 'dd/MM/yyyy')}</span>
+              </div>
+              {viewTarget.accounts?.name && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Account</span>
+                  <span className="text-foreground">{viewTarget.accounts.name}</span>
+                </div>
+              )}
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Invoice Type</span>
+                <span className="text-foreground">{invoiceTypeBadge[viewTarget.invoice_type]?.label ?? 'None'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Status</span>
+                <span className="text-foreground">{statusBadge[viewTarget.status]?.label ?? 'Draft'}</span>
+              </div>
+              {viewTarget.vat_amount != null && Number(viewTarget.vat_amount) > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">VAT</span>
+                  <span className="text-foreground">SAR {fmtNum(viewTarget.vat_amount)}</span>
+                </div>
+              )}
+              {viewTarget.invoice_file_url && (
+                <a
+                  href={viewTarget.invoice_file_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-primary hover:underline text-sm mt-1"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  View Invoice
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button onClick={() => setViewTarget(null)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Delete Confirmation Dialog */}
       <Dialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <DialogContent className="sm:max-w-md">
@@ -271,7 +333,7 @@ export function ExpenseList({
             <DialogTitle>Confirm Delete</DialogTitle>
           </DialogHeader>
           <div className="py-3 text-sm text-muted-foreground">
-            Are you sure you want to delete the expense for <strong>"{deleteTarget?.description}"</strong> of <strong>SAR {Number(deleteTarget?.amount).toFixed(2)}</strong>?
+            Are you sure you want to delete the expense for <strong>"{deleteTarget?.description}"</strong> of <strong>SAR {fmtNum(deleteTarget?.amount ?? 0)}</strong>?
             This action cannot be undone.
           </div>
           <DialogFooter className="flex gap-2 justify-end">
