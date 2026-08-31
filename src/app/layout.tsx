@@ -1,8 +1,14 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, Geist_Mono } from "next/font/google";
+import { Inter, Geist_Mono, IBM_Plex_Sans_Arabic } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
+
+const arabicFont = IBM_Plex_Sans_Arabic({
+  subsets: ["arabic"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-main",
+});
 
 const inter = Inter({
   variable: "--font-inter",
@@ -38,7 +44,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${inter.variable} ${geistMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col bg-background">
+      <body className={`min-h-full flex flex-col bg-background ${arabicFont.className}`} >
         <ThemeProvider>
           {children}
           <Toaster richColors position="top-center" />
